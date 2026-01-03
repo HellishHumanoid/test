@@ -1,1 +1,1097 @@
+-- ========================================
+-- AUTO-REJOIN & AUTO-EXECUTE
+-- ========================================
 
+local TeleportService = game:GetService("TeleportService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local HttpService = game:GetService("HttpService")
+
+if not _G.MM2ScriptURL then
+    _G.MM2ScriptURL = "https://raw.githubusercontent.com/HellishHumanoid/test/refs/heads/main/hmm2"
+end
+
+-- ========================================
+-- SAVE SYSTEM
+-- ========================================
+
+local hasFileSystem = writefile and readfile and isfile and makefolder
+
+if hasFileSystem then
+    if not isfolder("MM2Settings") then
+        makefolder("MM2Settings")
+    end
+end
+
+local function saveSettings(espEnabled, autofarmEnabled)
+    if not hasFileSystem then return end
+    
+    local settings = {
+        ESPEnabled = espEnabled,
+        AutofarmEnabled = autofarmEnabled
+    }
+    
+    pcall(function()
+        writefile("MM2Settings/config.json", HttpService:JSONEncode(settings))
+    end)
+end
+
+local function loadSettings()
+    if not hasFileSystem then return nil end
+    
+    if isfile("MM2Settings/config.json") then
+        local success, result = pcall(function()
+            local data = readfile("MM2Settings/config.json")
+            return HttpService:JSONDecode(data)
+        end)
+        
+        if success and result then
+            return result
+        end
+    end
+    
+    return nil
+end
+
+local savedSettings = loadSettings()
+
+local function rejoinGame()
+    wait(1)
+    TeleportService:Teleport(game.PlaceId, LocalPlayer)
+end
+
+if queueonteleport then
+    queueonteleport([[
+        repeat wait() until game:IsLoaded()
+        wait(8)
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/HellishHumanoid/test/refs/heads/main/hmm2"))()
+    ]])
+end
+
+LocalPlayer.OnTeleport:Connect(function()
+    if queueonteleport then
+        queueonteleport([[
+            repeat wait() until game:IsLoaded()
+            wait(8)
+            loadstring(game:HttpGet("https://raw.githubusercontent.com/HellishHumanoid/test/refs/heads/main/hmm2"))()
+        ]])
+    end
+end)
+
+game:GetService("CoreGui").DescendantAdded:Connect(function(descendant)
+    if descendant.Name == "ErrorPrompt" or descendant.Name == "RobloxPromptGui" then
+        wait(0.5)
+        for _, child in pairs(descendant:GetDescendants()) do
+            if child:IsA("TextLabel") or child:IsA("TextButton") then
+                local text = string.lower(child.Text)
+                if string.find(text, "kick") or string.find(text, "disconnect") or string.find(text, "banned") then
+                    rejoinGame()
+                    break
+                end
+            end
+        end
+    end
+end)
+
+local lastError = ""
+game:GetService("GuiService").ErrorMessageChanged:Connect(function()
+    local currentError = game:GetService("GuiService"):GetErrorMessage()
+    if currentError ~= lastError and currentError ~= "" then
+        lastError = currentError
+        wait(0.5)
+        rejoinGame()
+    end
+end)
+
+-- ========================================
+-- CLEANUP SYSTEM
+-- ========================================
+
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+
+if _G.MurderMysteryESP and _G.MurderMysteryESP.Connections then
+    for _, connection in pairs(_G.MurderMysteryESP.Connections) do
+        pcall(function()
+            connection:Disconnect()
+        end)
+    end
+end
+
+_G.MurderMysteryESP = nil
+_G.MurderMysteryESP_Highlights = nil
+
+task.wait(0.1)
+
+for _, gui in pairs(CoreGui:GetChildren()) do
+    if gui.Name == "HellishUI" then
+        gui:Destroy()
+    end
+end
+
+if LocalPlayer:FindFirstChild("PlayerGui") then
+    for _, gui in pairs(LocalPlayer.PlayerGui:GetChildren()) do
+        if gui.Name == "HellishUI" then
+            gui:Destroy()
+        end
+    end
+end
+
+task.wait(0.1)
+
+for _, obj in pairs(workspace:GetDescendants()) do
+    if obj:IsA("Highlight") then
+        obj:Destroy()
+    end
+end
+
+for _, player in pairs(Players:GetPlayers()) do
+    if player.Character then
+        for _, obj in pairs(player.Character:GetDescendants()) do
+            if obj:IsA("Highlight") then
+                obj:Destroy()
+            end
+        end
+    end
+    
+    local workspaceChar = workspace:FindFirstChild(player.Name)
+    if workspaceChar then
+        for _, obj in pairs(workspaceChar:GetDescendants()) do
+            if obj:IsA("Highlight") then
+                obj:Destroy()
+            end
+        end
+    end
+end
+
+task.wait(0.5)
+
+-- ========================================
+-- SCRIPT INITIALIZATION
+-- ========================================
+
+local HellishUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/HellishHumanoid/hub/refs/heads/main/ui"))()
+
+if not HellishUI then
+    error("Failed to load Hellish UI - Library returned nil")
+end
+
+if not _G.MurderMysteryESP then
+    _G.MurderMysteryESP = {}
+end
+
+_G.MurderMysteryESP = {
+    Connections = {},
+    Highlights = {},
+    Enabled = false,
+    ESPEnabled = false,
+    Window = nil
+}
+
+local function TrackConnection(connection)
+    table.insert(_G.MurderMysteryESP.Connections, connection)
+    return connection
+end
+
+-- ========================================
+-- CONFIGURATION
+-- ========================================
+
+local ESPConfig = {
+    Enabled = false,
+    SheriffColor = Color3.fromRGB(0, 100, 255),
+    MurdererColor = Color3.fromRGB(255, 0, 0),
+    CivilianColor = Color3.fromRGB(0, 255, 0),
+    HighlightTransparency = 0.5,
+    OutlineTransparency = 0
+}
+
+local AutofarmEnabled = false
+local noclipConnection = nil
+local walkspeedConnection = nil
+local originalWalkSpeed = 16
+local originalJumpPower = 50
+
+local function setNoclip(enabled)
+    if enabled then
+        -- Store original values first
+        pcall(function()
+            local character = LocalPlayer.Character
+            if character then
+                local humanoid = character:FindFirstChildOfClass("Humanoid")
+                if humanoid then
+                    originalWalkSpeed = humanoid.WalkSpeed
+                    originalJumpPower = humanoid.JumpPower
+                end
+            end
+        end)
+        
+        if noclipConnection then
+            noclipConnection:Disconnect()
+        end
+        
+        if walkspeedConnection then
+            walkspeedConnection:Disconnect()
+        end
+        
+        noclipConnection = TrackConnection(RunService.Stepped:Connect(function()
+            pcall(function()
+                local character = LocalPlayer.Character
+                if character then
+                    for _, part in pairs(character:GetDescendants()) do
+                        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" and part.Name ~= "Head" then
+                            part.CanCollide = false
+                        end
+                    end
+                end
+            end)
+        end))
+        
+        -- Separate connection to constantly enforce 0 walkspeed/jumppower
+        walkspeedConnection = TrackConnection(RunService.Heartbeat:Connect(function()
+            pcall(function()
+                local character = LocalPlayer.Character
+                if character and AutofarmEnabled then
+                    local humanoid = character:FindFirstChildOfClass("Humanoid")
+                    if humanoid then
+                        humanoid.WalkSpeed = 0
+                        humanoid.JumpPower = 0
+                    end
+                end
+            end)
+        end))
+    else
+        if noclipConnection then
+            noclipConnection:Disconnect()
+            noclipConnection = nil
+        end
+        
+        if walkspeedConnection then
+            walkspeedConnection:Disconnect()
+            walkspeedConnection = nil
+        end
+        
+        pcall(function()
+            local character = LocalPlayer.Character
+            if character then
+                local humanoid = character:FindFirstChildOfClass("Humanoid")
+                if humanoid then
+                    -- Restore original movement values
+                    humanoid.WalkSpeed = originalWalkSpeed
+                    humanoid.JumpPower = originalJumpPower
+                end
+                
+                for _, part in pairs(character:GetDescendants()) do
+                    if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                        part.CanCollide = true
+                    end
+                end
+            end
+        end)
+    end
+end
+
+local PlayerRoles = {}
+local Highlights = {}
+
+-- ========================================
+-- CREATE UI WINDOW
+-- ========================================
+
+local Window = HellishUI:CreateWindow({
+    Name = "Hellish's MM2",
+    LoadingEnabled = false,
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = "MM2Settings",
+        FileName = "Config"
+    },
+    KeySystem = false
+})
+
+_G.MurderMysteryESP.Window = Window
+
+local MainTab = Window:CreateTab("Main")
+local ESPSection = MainTab:CreateSection("ESP Features")
+
+-- Load saved settings BEFORE creating toggles
+local savedESP = (savedSettings and savedSettings.ESPEnabled) or false
+local savedAutofarm = (savedSettings and savedSettings.AutofarmEnabled) or false
+
+local espToggle = ESPSection:CreateToggle({
+    Name = "Enable ESP",
+    Default = savedESP,
+    Description = "Show player roles with highlights",
+    Callback = function(Value)
+        ESPConfig.Enabled = Value
+        _G.MurderMysteryESP.ESPEnabled = Value
+        
+        saveSettings(Value, AutofarmEnabled)
+        
+        for player, highlight in pairs(Highlights) do
+            if highlight and highlight.Parent then
+                highlight:Destroy()
+            end
+        end
+        
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if obj:IsA("Highlight") then
+                obj:Destroy()
+            end
+        end
+        
+        Highlights = {}
+        PlayerRoles = {}
+        _G.MurderMysteryESP.Highlights = {}
+        
+        if Value then
+            task.wait(0.1)
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer then
+                    updatePlayerESP(player)
+                end
+            end
+        end
+    end
+})
+
+local AutofarmSection = MainTab:CreateSection("Autofarm Features")
+
+local autofarmToggle = AutofarmSection:CreateToggle({
+    Name = "Coin Autofarm",
+    Default = savedAutofarm,
+    Description = "Automatically collect coins",
+    Callback = function(Value)
+        AutofarmEnabled = Value
+        
+        saveSettings(ESPConfig.Enabled, Value)
+        
+        if not Value then
+            setNoclip(false)
+            
+            pcall(function()
+                local character = LocalPlayer.Character
+                if character then
+                    local humanoid = character:FindFirstChildOfClass("Humanoid")
+                    if humanoid then
+                        -- Restore original movement values
+                        humanoid.WalkSpeed = originalWalkSpeed
+                        humanoid.JumpPower = originalJumpPower
+                    end
+                    
+                    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+                    if humanoidRootPart then
+                        local bodyVelocity = humanoidRootPart:FindFirstChild("AntiGravity")
+                        if bodyVelocity then
+                            bodyVelocity:Destroy()
+                        end
+                    end
+                end
+            end)
+            
+            pcall(function()
+                for _, obj in pairs(workspace:GetChildren()) do
+                    if obj.Name == "AutofarmPlatform" then
+                        obj:Destroy()
+                    end
+                end
+            end)
+        else
+            setNoclip(true)
+        end
+    end
+})
+
+-- ========================================
+-- APPLY SAVED SETTINGS AFTER UI IS CREATED
+-- ========================================
+task.wait(0.1)  -- Small delay to ensure UI is fully loaded
+
+-- Force update the toggle visuals to match saved settings
+if savedESP then
+    ESPConfig.Enabled = true
+    _G.MurderMysteryESP.ESPEnabled = true
+    espToggle.SetValue(true)  -- Force visual update
+end
+
+if savedAutofarm then
+    AutofarmEnabled = true
+    setNoclip(true)
+    autofarmToggle.SetValue(true)  -- Force visual update
+end
+
+local SettingsTab = Window:CreateTab("Settings")
+local StatusSection = SettingsTab:CreateSection("Status")
+
+StatusSection:CreateLabel("✓ Auto-Rejoin: ENABLED")
+StatusSection:CreateLabel("✓ Auto-Execute: ENABLED")
+
+if hasFileSystem then
+    StatusSection:CreateLabel("✓ Settings Save: ENABLED")
+else
+    StatusSection:CreateLabel("✗ Settings Save: DISABLED")
+end
+
+local function checkPlayerForItem(player, itemName)
+    if not player then return false end
+    
+    local character = player.Character
+    if character then
+        local item = character:FindFirstChild(itemName)
+        if item then
+            return true
+        end
+    end
+    
+    local workspaceCharacter = workspace:FindFirstChild(player.Name)
+    if workspaceCharacter then
+        local item = workspaceCharacter:FindFirstChild(itemName)
+        if item then
+            return true
+        end
+    end
+    
+    local backpack = player:FindFirstChild("Backpack")
+    if backpack then
+        local item = backpack:FindFirstChild(itemName)
+        if item then
+            return true
+        end
+    end
+    
+    return false
+end
+
+local function determinePlayerRole(player)
+    if player == LocalPlayer then
+        return nil
+    end
+    
+    if checkPlayerForItem(player, "Gun") then
+        return "Sheriff"
+    end
+    
+    if checkPlayerForItem(player, "Knife") then
+        return "Murderer"
+    end
+    
+    return "Civilian"
+end
+
+local function createHighlight(player, role)
+    if not ESPConfig.Enabled then return end
+    if not player then return end
+    if player == LocalPlayer then return end
+    
+    local character = player.Character or workspace:FindFirstChild(player.Name)
+    if not character then return end
+    
+    for _, obj in pairs(character:GetDescendants()) do
+        if obj:IsA("Highlight") then
+            obj:Destroy()
+        end
+    end
+    
+    if Highlights[player] and Highlights[player].Parent then
+        Highlights[player]:Destroy()
+    end
+    
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "ESPHighlight"
+    highlight.Adornee = character
+    highlight.FillTransparency = ESPConfig.HighlightTransparency
+    highlight.OutlineTransparency = ESPConfig.OutlineTransparency
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    
+    if role == "Sheriff" then
+        highlight.FillColor = ESPConfig.SheriffColor
+        highlight.OutlineColor = ESPConfig.SheriffColor
+    elseif role == "Murderer" then
+        highlight.FillColor = ESPConfig.MurdererColor
+        highlight.OutlineColor = ESPConfig.MurdererColor
+    elseif role == "Civilian" then
+        highlight.FillColor = ESPConfig.CivilianColor
+        highlight.OutlineColor = ESPConfig.CivilianColor
+    end
+    
+    highlight.Parent = character
+    Highlights[player] = highlight
+    
+    if _G.MurderMysteryESP then
+        _G.MurderMysteryESP.Highlights[player] = highlight
+    end
+end
+
+function updatePlayerESP(player)
+    if not ESPConfig.Enabled then return end
+    if player == LocalPlayer then return end
+    
+    local role = determinePlayerRole(player)
+    
+    if role then
+        PlayerRoles[player] = role
+        createHighlight(player, role)
+    end
+end
+
+local function removePlayerESP(player)
+    if Highlights[player] and Highlights[player].Parent then
+        Highlights[player]:Destroy()
+    end
+    Highlights[player] = nil
+    PlayerRoles[player] = nil
+    
+    if _G.MurderMysteryESP and _G.MurderMysteryESP.Highlights then
+        _G.MurderMysteryESP.Highlights[player] = nil
+    end
+end
+
+local function setupPlayerMonitoring(player)
+    if player == LocalPlayer then return end
+    
+    TrackConnection(player.CharacterAdded:Connect(function(character)
+        task.wait(0.5)
+        updatePlayerESP(player)
+        
+        TrackConnection(character.ChildAdded:Connect(function(child)
+            if child:IsA("Tool") and (child.Name == "Gun" or child.Name == "Knife") then
+                updatePlayerESP(player)
+            end
+        end))
+        
+        TrackConnection(character.ChildRemoved:Connect(function(child)
+            if child:IsA("Tool") and (child.Name == "Gun" or child.Name == "Knife") then
+                task.wait(0.1)
+                updatePlayerESP(player)
+            end
+        end))
+    end))
+    
+    local function monitorWorkspaceCharacter()
+        local workspaceChar = workspace:FindFirstChild(player.Name)
+        if workspaceChar then
+            TrackConnection(workspaceChar.ChildAdded:Connect(function(child)
+                if child:IsA("Tool") and (child.Name == "Gun" or child.Name == "Knife") then
+                    updatePlayerESP(player)
+                end
+            end))
+            
+            TrackConnection(workspaceChar.ChildRemoved:Connect(function(child)
+                if child:IsA("Tool") and (child.Name == "Gun" or child.Name == "Knife") then
+                    task.wait(0.1)
+                    updatePlayerESP(player)
+                end
+            end))
+        end
+    end
+    
+    monitorWorkspaceCharacter()
+    
+    TrackConnection(workspace.ChildAdded:Connect(function(child)
+        if child.Name == player.Name then
+            task.wait(0.5)
+            updatePlayerESP(player)
+            monitorWorkspaceCharacter()
+        end
+    end))
+    
+    local backpack = player:WaitForChild("Backpack", 5)
+    if backpack then
+        TrackConnection(backpack.ChildAdded:Connect(function(child)
+            if child:IsA("Tool") and (child.Name == "Gun" or child.Name == "Knife") then
+                updatePlayerESP(player)
+            end
+        end))
+        
+        TrackConnection(backpack.ChildRemoved:Connect(function(child)
+            if child:IsA("Tool") and (child.Name == "Gun" or child.Name == "Knife") then
+                task.wait(0.1)
+                updatePlayerESP(player)
+            end
+        end))
+    end
+    
+    if player.Character or workspace:FindFirstChild(player.Name) then
+        updatePlayerESP(player)
+    end
+end
+
+for _, player in pairs(Players:GetPlayers()) do
+    setupPlayerMonitoring(player)
+end
+
+TrackConnection(Players.PlayerAdded:Connect(function(player)
+    setupPlayerMonitoring(player)
+end))
+
+TrackConnection(Players.PlayerRemoving:Connect(function(player)
+    removePlayerESP(player)
+end))
+
+TrackConnection(RunService.Heartbeat:Connect(function()
+    if not ESPConfig.Enabled then return end
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local character = player.Character or workspace:FindFirstChild(player.Name)
+            
+            if character then
+                if PlayerRoles[player] and (not Highlights[player] or not Highlights[player].Parent) then
+                    createHighlight(player, PlayerRoles[player])
+                end
+                
+                updatePlayerESP(player)
+            end
+        end
+    end
+end))
+
+-- Anti-AFK
+task.spawn(function()
+    local VirtualInputManager = game:GetService("VirtualInputManager")
+    
+    while task.wait(300) do
+        pcall(function()
+            local screenSize = workspace.CurrentCamera.ViewportSize
+            local centerX = screenSize.X / 2
+            local centerY = screenSize.Y / 2
+            
+            VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, true, game, 0)
+            task.wait(0.1)
+            VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, false, game, 0)
+        end)
+    end
+end)
+
+-- ========================================
+-- COIN AUTOFARM (FIXED VERSION)
+-- ========================================
+task.spawn(function()
+    local visitedCoins = {}
+    local checkInterval = 3
+    local mainGUIReference = nil
+    local platformPart = nil
+    
+    -- FIXED: Single function to update platform position
+    local function updatePlatform(targetPosition)
+        local character = LocalPlayer.Character
+        if not character then return end
+        
+        local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+        if not humanoidRootPart then return end
+        
+        -- Create platform if it doesn't exist
+        if not platformPart or not platformPart.Parent then
+            platformPart = Instance.new("Part")
+            platformPart.Name = "AutofarmPlatform"
+            platformPart.Size = Vector3.new(8, 0.5, 8)
+            platformPart.Anchored = true
+            platformPart.CanCollide = true
+            platformPart.Transparency = 1
+            platformPart.Material = Enum.Material.SmoothPlastic
+            platformPart.Parent = workspace
+        end
+        
+        -- Teleport player to target position
+        humanoidRootPart.CFrame = CFrame.new(targetPosition)
+        humanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+        humanoidRootPart.RotVelocity = Vector3.new(0, 0, 0)
+        
+        -- Place platform under player (3 studs below)
+        local offset = Vector3.new(0, -3, 0)
+        platformPart.CFrame = CFrame.new(targetPosition + offset)
+    end
+    
+    local function getMainGUI()
+        local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+        if playerGui then
+            return playerGui:FindFirstChild("MainGUI")
+        end
+        return nil
+    end
+    
+    mainGUIReference = getMainGUI()
+    
+    -- Map change detection
+    task.spawn(function()
+        local lastMapName = nil
+        
+        while true do
+            wait(0.25)
+            
+            if AutofarmEnabled then
+                local currentMapName = nil
+                local hasCoinContainer = false
+                
+                for _, obj in pairs(workspace:GetChildren()) do
+                    local container = obj:FindFirstChild("CoinContainer")
+                    if container and obj.Name ~= "Camera" then
+                        currentMapName = obj.Name
+                        hasCoinContainer = true
+                        break
+                    end
+                end
+                
+                if hasCoinContainer and currentMapName ~= lastMapName then
+                    visitedCoins = {}
+                    checkInterval = 0.03
+                    mainGUIReference = getMainGUI()
+                    lastMapName = currentMapName
+                end
+                
+                if not hasCoinContainer and lastMapName then
+                    visitedCoins = {}
+                    checkInterval = 3
+                    lastMapName = nil
+                    
+                    pcall(function()
+                        local character = LocalPlayer.Character
+                        if character then
+                            local hrp = character:FindFirstChild("HumanoidRootPart")
+                            if hrp then
+                                local bv = hrp:FindFirstChild("AntiGravity")
+                                if bv then bv:Destroy() end
+                            end
+                        end
+                    end)
+                    
+                    -- Destroy platform when no coin container exists
+                    pcall(function()
+                        if platformPart and platformPart.Parent then
+                            platformPart:Destroy()
+                            platformPart = nil
+                        end
+                    end)
+                end
+            end
+        end
+    end)
+    
+    -- Main autofarm loop
+    while true do
+        task.wait(checkInterval)
+        
+        if AutofarmEnabled then
+            pcall(function()
+                -- Check for snow token full
+                if not mainGUIReference or not mainGUIReference.Parent then
+                    mainGUIReference = getMainGUI()
+                end
+                
+                if mainGUIReference then
+                    local game = mainGUIReference:FindFirstChild("Game")
+                    if game then
+                        local coinBags = game:FindFirstChild("CoinBags")
+                        if coinBags then
+                            local container = coinBags:FindFirstChild("Container")
+                            if container then
+                                local snowToken = container:FindFirstChild("SnowToken")
+                                if snowToken then
+                                    local full = snowToken:FindFirstChild("Full")
+                                    
+                                    if full and full.Visible then
+                                        local character = LocalPlayer.Character
+                                        if character then
+                                            local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+                                            if humanoidRootPart then
+                                                local bodyVelocity = humanoidRootPart:FindFirstChild("AntiGravity")
+                                                if not bodyVelocity then
+                                                    bodyVelocity = Instance.new("BodyVelocity")
+                                                    bodyVelocity.Name = "AntiGravity"
+                                                    bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                                                    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+                                                    bodyVelocity.Parent = humanoidRootPart
+                                                end
+                                                
+                                                local waitCount = 0
+                                                while full and full.Visible and AutofarmEnabled do
+                                                    local currentPos = humanoidRootPart.Position
+                                                    local targetPos = Vector3.new(currentPos.X, 200, currentPos.Z)
+                                                    
+                                                    humanoidRootPart.CFrame = CFrame.new(targetPos)
+                                                    humanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+                                                    humanoidRootPart.RotVelocity = Vector3.new(0, 0, 0)
+                                                    humanoidRootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                                                    humanoidRootPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                                                    
+                                                    updatePlatform(humanoidRootPart.Position)
+                                                    
+                                                    task.wait()
+                                                    waitCount = waitCount + 1
+                                                    
+                                                    if waitCount > 1000 then
+                                                        break
+                                                    end
+                                                end
+                                                
+                                                if bodyVelocity then
+                                                    bodyVelocity:Destroy()
+                                                end
+                                                
+                                                visitedCoins = {}
+                                                checkInterval = 0.03
+                                                
+                                                -- Wait 1 second after teleporting to safezone
+                                                task.wait(1)
+                                                
+                                                -- Check if LocalPlayer is the murderer
+                                                if checkPlayerForItem(LocalPlayer, "Knife") then
+                                                    -- If we have the knife, set health to 0
+                                                    pcall(function()
+                                                        local character = LocalPlayer.Character
+                                                        if character then
+                                                            local humanoid = character:FindFirstChildOfClass("Humanoid")
+                                                            if humanoid then
+                                                                humanoid.Health = 0
+                                                            end
+                                                        end
+                                                    end)
+                                                    return
+                                                end
+                                                
+                                                -- Keep flinging murderers until autofarm is disabled or round ends
+                                                while AutofarmEnabled do
+                                                    -- Find the murderer (player with knife)
+                                                    local murderer = nil
+                                                    for _, player in pairs(Players:GetPlayers()) do
+                                                        if player ~= LocalPlayer then
+                                                            if checkPlayerForItem(player, "Knife") then
+                                                                murderer = player
+                                                                break
+                                                            end
+                                                        end
+                                                    end
+                                                    
+                                                    if murderer then
+                                                        local flingDuration = 4 -- Fling for 4 seconds
+                                                        local flingStartTime = tick()
+                                                        
+                                                        -- Disable noclip temporarily for better physics collision
+                                                        pcall(function()
+                                                            local character = LocalPlayer.Character
+                                                            if character then
+                                                                for _, part in pairs(character:GetDescendants()) do
+                                                                    if part:IsA("BasePart") then
+                                                                        part.CanCollide = true
+                                                                    end
+                                                                end
+                                                            end
+                                                        end)
+                                                        
+                                                        while tick() - flingStartTime < flingDuration and AutofarmEnabled do
+                                                            pcall(function()
+                                                                local murdererChar = murderer.Character or workspace:FindFirstChild(murderer.Name)
+                                                                local character = LocalPlayer.Character
+                                                                
+                                                                if murdererChar and character then
+                                                                    local murdererHRP = murdererChar:FindFirstChild("HumanoidRootPart")
+                                                                    local myHRP = character:FindFirstChild("HumanoidRootPart")
+                                                                    
+                                                                    if murdererHRP and myHRP then
+                                                                        -- Get murderer's position and create offset
+                                                                        local murdererPos = murdererHRP.Position
+                                                                        
+                                                                        -- Teleport slightly into the murderer for better collision
+                                                                        myHRP.CFrame = CFrame.new(murdererPos)
+                                                                        
+                                                                        -- Apply massive spin velocity
+                                                                        myHRP.AssemblyAngularVelocity = Vector3.new(0, 100000, 0)
+                                                                        myHRP.RotVelocity = Vector3.new(0, 100000, 0)
+                                                                        
+                                                                        -- Also apply linear velocity for extra impact
+                                                                        myHRP.AssemblyLinearVelocity = Vector3.new(0, 5000, 0)
+                                                                        myHRP.Velocity = Vector3.new(0, 5000, 0)
+                                                                    end
+                                                                end
+                                                            end)
+                                                            
+                                                            task.wait()
+                                                        end
+                                                        
+                                                        -- Reset velocities and re-enable noclip after flinging
+                                                        pcall(function()
+                                                            local character = LocalPlayer.Character
+                                                            if character then
+                                                                local myHRP = character:FindFirstChild("HumanoidRootPart")
+                                                                if myHRP then
+                                                                    myHRP.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                                                                    myHRP.RotVelocity = Vector3.new(0, 0, 0)
+                                                                    myHRP.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                                                                    myHRP.Velocity = Vector3.new(0, 0, 0)
+                                                                end
+                                                                
+                                                                -- Re-enable noclip
+                                                                for _, part in pairs(character:GetDescendants()) do
+                                                                    if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" and part.Name ~= "Head" then
+                                                                        part.CanCollide = false
+                                                                    end
+                                                                end
+                                                            end
+                                                        end)
+                                                        
+                                                        -- Wait a moment before searching for next murderer
+                                                        task.wait(0.5)
+                                                    else
+                                                        -- No murderer found, wait before checking again
+                                                        task.wait(1)
+                                                    end
+                                                    
+                                                    -- Check if round ended (no coin container means lobby)
+                                                    local coinContainerStillExists = false
+                                                    for _, obj in pairs(workspace:GetChildren()) do
+                                                        if obj:FindFirstChild("CoinContainer") then
+                                                            coinContainerStillExists = true
+                                                            break
+                                                        end
+                                                    end
+                                                    
+                                                    if not coinContainerStillExists then
+                                                        break
+                                                    end
+                                                end
+                                                
+                                                task.wait(2)
+                                                
+                                                return
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+                
+                local character = LocalPlayer.Character
+                if not character then return end
+                
+                local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+                if not humanoidRootPart then return end
+                
+                -- Check if coin container exists
+                local coinContainerExists = false
+                for _, obj in pairs(workspace:GetChildren()) do
+                    if obj:FindFirstChild("CoinContainer") then
+                        coinContainerExists = true
+                        break
+                    end
+                end
+                
+                if not coinContainerExists then
+                    -- Destroy platform and stop when waiting for map
+                    pcall(function()
+                        if platformPart and platformPart.Parent then
+                            platformPart:Destroy()
+                            platformPart = nil
+                        end
+                    end)
+                    checkInterval = 3
+                    return
+                end
+                
+                -- Find all coin containers
+                local coinContainers = {}
+                for _, obj in pairs(workspace:GetDescendants()) do
+                    if obj.Name == "CoinContainer" and (obj:IsA("Model") or obj:IsA("Folder")) then
+                        table.insert(coinContainers, obj)
+                    end
+                end
+                
+                -- Find closest unvisited coin
+                local closestCoin = nil
+                local closestDistance = math.huge
+                
+                for _, container in pairs(coinContainers) do
+                    for _, coin in pairs(container:GetChildren()) do
+                        if coin.Name == "Coin_Server" and coin:IsA("BasePart") and not visitedCoins[coin] then
+                            local distance = (coin.Position - humanoidRootPart.Position).Magnitude
+                            
+                            if distance < closestDistance and distance <= 500 then
+                                closestDistance = distance
+                                closestCoin = coin
+                            end
+                        end
+                    end
+                end
+                
+                -- Clean up visited coins that no longer exist
+                for coin, _ in pairs(visitedCoins) do
+                    if not coin.Parent then
+                        visitedCoins[coin] = nil
+                    end
+                end
+                
+                -- If no coins found, reset
+                if not closestCoin then
+                    visitedCoins = {}
+                    checkInterval = 3
+                    return
+                end
+                
+                checkInterval = 0.03
+                visitedCoins[closestCoin] = true
+                
+                local targetPosition = closestCoin.Position
+                local speed = 33  -- Changed to 33 for faster movement
+                local startPosition = humanoidRootPart.Position
+                local distance = (targetPosition - startPosition).Magnitude
+                local duration = distance / speed
+                
+                local startTime = tick()
+                
+                -- Movement loop
+                while AutofarmEnabled and closestCoin.Parent do
+                    if not AutofarmEnabled then
+                        return
+                    end
+                    
+                    if not closestCoin.Parent then
+                        break
+                    end
+                    
+                    -- Check if coin was collected (transparency check)
+                    local coinParent = closestCoin.Parent
+                    if coinParent then
+                        local coinVisual = coinParent:FindFirstChild("CoinVisual")
+                        if coinVisual and coinVisual:IsA("BasePart") and coinVisual.Transparency == 1 then
+                            break
+                        end
+                    end
+                    
+                    local elapsed = tick() - startTime
+                    local currentDistance = (humanoidRootPart.Position - targetPosition).Magnitude
+                    
+                    -- If reached coin or timeout
+                    if currentDistance < 3 or elapsed > duration + 1 then
+                        -- Hold position to collect coin
+                        for i = 1, 15 do
+                            if not closestCoin.Parent then break end
+                            
+                            if coinParent then
+                                local coinVisual = coinParent:FindFirstChild("CoinVisual")
+                                if coinVisual and coinVisual:IsA("BasePart") and coinVisual.Transparency == 1 then
+                                    break
+                                end
+                            end
+                            
+                            updatePlatform(targetPosition)
+                            task.wait()
+                        end
+                        
+                        -- Wait 0.3 seconds in place after collecting coin
+                        task.wait(0.3)
+                        break
+                    end
+                    
+                    -- Smooth movement using lerp
+                    local alpha = math.min(elapsed / duration, 1)
+                    local currentPosition = startPosition:Lerp(targetPosition, alpha)
+                    
+                    updatePlatform(currentPosition)
+                    
+                    task.wait()
+                end
+            end)
+        end
+    end
+end)
