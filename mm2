@@ -1,76 +1,45 @@
 -- ========================================
--- AUTO-REJOIN & AUTO-EXECUTE SYSTEM (XENO FIXED)
+-- AUTO-REJOIN & AUTO-EXECUTE (ALTERNATIVE METHOD)
 -- ========================================
 
 local TeleportService = game:GetService("TeleportService")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
--- Store script URL for re-execution
+-- Store script URL
 if not _G.MM2ScriptURL then
     _G.MM2ScriptURL = "https://raw.githubusercontent.com/HellishHumanoid/test/refs/heads/main/mm2"
 end
 
-print("Queue Function: queueonteleport (Xeno)")
-
--- Function to rejoin the game
+-- Function to rejoin with queue
 local function rejoinGame()
-    print("Kick detected! Queuing script and rejoining...")
+    print("========== REJOINING ==========")
     
-    -- Queue the script with proper waiting and error handling
-    local queueCode = [[
--- CRITICAL: Wait for game to be fully loaded
-print("[AUTO-EXEC] Waiting for game to load...")
-repeat task.wait(0.5) until game:IsLoaded()
-print("[AUTO-EXEC] Game loaded, waiting for character...")
-
--- Wait for LocalPlayer
-local Players = game:GetService("Players")
-repeat task.wait(0.5) until Players.LocalPlayer
-
--- Wait for character to exist
-local LocalPlayer = Players.LocalPlayer
-repeat task.wait(0.5) until LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-
--- Additional wait for stability
-task.wait(3)
-
-print("[AUTO-EXEC] Loading MM2 Script...")
-
--- Load the script with error handling
-local success, err = pcall(function()
-    local scriptCode = game:HttpGet("]] .. _G.MM2ScriptURL .. [[", true)
-    if scriptCode then
-        loadstring(scriptCode)()
-        print("[AUTO-EXEC] ✓ Script loaded successfully!")
-    else
-        warn("[AUTO-EXEC] Failed to fetch script")
-    end
-end)
-
-if not success then
-    warn("[AUTO-EXEC] ✗ Error: " .. tostring(err))
-end
-]]
-    
-    local success, err = pcall(function()
-        queueonteleport(queueCode)
-    end)
-    
-    if success then
-        print("✓ Script queued for auto-execute!")
-    else
-        warn("✗ Failed to queue script: " .. tostring(err))
+    -- Method 1: Try direct queueonteleport (simplest form)
+    if queueonteleport then
+        queueonteleport('repeat task.wait() until game:IsLoaded() task.wait(7) loadstring(game:HttpGet("' .. _G.MM2ScriptURL .. '",true))()')
+        print("✓ Queued (Method 1: Direct)")
     end
     
-    -- Now teleport
-    task.wait(0.5)
-    pcall(function()
-        TeleportService:Teleport(game.PlaceId, LocalPlayer)
-    end)
+    -- Method 2: Try with proper escaping
+    if queueonteleport then
+        local code = 'repeat task.wait() until game:IsLoaded() task.wait(7) loadstring(game:HttpGet("https://raw.githubusercontent.com/HellishHumanoid/test/refs/heads/main/mm2",true))()'
+        queueonteleport(code)
+        print("✓ Queued (Method 2: Hardcoded URL)")
+    end
+    
+    -- Method 3: Try queue_on_teleport
+    if queue_on_teleport then
+        queue_on_teleport('repeat task.wait() until game:IsLoaded() task.wait(7) loadstring(game:HttpGet("' .. _G.MM2ScriptURL .. '",true))()')
+        print("✓ Queued (Method 3: queue_on_teleport)")
+    end
+    
+    -- Teleport
+    task.wait(1)
+    TeleportService:Teleport(game.PlaceId, LocalPlayer)
 end
 
--- Detect KICK-RELATED UI elements
+-- Detect kicks
 game:GetService("CoreGui").DescendantAdded:Connect(function(descendant)
     if descendant.Name == "ErrorPrompt" or descendant.Name == "RobloxPromptGui" then
         task.spawn(function()
@@ -95,46 +64,30 @@ game:GetService("CoreGui").DescendantAdded:Connect(function(descendant)
     end
 end)
 
--- Detect kick through GuiService
 local lastErrorMessage = ""
 game:GetService("GuiService").ErrorMessageChanged:Connect(function()
     local currentError = game:GetService("GuiService"):GetErrorMessage()
     if currentError ~= lastErrorMessage and currentError ~= "" then
         lastErrorMessage = currentError
-        print("Error detected: " .. currentError)
         task.wait(0.5)
         rejoinGame()
     end
 end)
 
--- Backup: OnTeleport hook
+-- OnTeleport hook (might work better)
 LocalPlayer.OnTeleport:Connect(function(State)
     if State == Enum.TeleportState.Started then
-        print("OnTeleport triggered - queuing script as backup...")
-        
-        local queueCode = [[
-print("[AUTO-EXEC BACKUP] Waiting for game...")
-repeat task.wait(0.5) until game:IsLoaded()
-local Players = game:GetService("Players")
-repeat task.wait(0.5) until Players.LocalPlayer
-local LocalPlayer = Players.LocalPlayer
-repeat task.wait(0.5) until LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-task.wait(3)
-print("[AUTO-EXEC BACKUP] Loading script...")
-pcall(function()
-    loadstring(game:HttpGet("]] .. _G.MM2ScriptURL .. [[", true))()
-end)
-]]
-        
-        pcall(function()
-            queueonteleport(queueCode)
-        end)
+        if queueonteleport then
+            queueonteleport('repeat task.wait() until game:IsLoaded() task.wait(7) loadstring(game:HttpGet("https://raw.githubusercontent.com/HellishHumanoid/test/refs/heads/main/mm2",true))()')
+            print("✓ Queued via OnTeleport")
+        end
     end
 end)
 
 print("===============================================")
 print("✓ Auto-Rejoin: ENABLED")
-print("✓ Auto-Execute: ENABLED (queueonteleport)")
+print("✓ Auto-Execute: Attempting multiple methods")
+print("Test: game:GetService('TeleportService'):Teleport(game.PlaceId)")
 print("===============================================")
 
 -- ========================================
