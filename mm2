@@ -1,0 +1,1013 @@
+-- Murder Mystery ESP Script - FINAL WORKING VERSION
+-- Detects Sheriff (Gun - Blue) and Murderer (Knife - Red)
+-- Uses Luminosity UI Library
+-- Added Coin Autofarm with FIXED coin collection
+
+-- ========================================
+-- NUCLEAR CLEANUP SYSTEM - RUNS FIRST
+-- ========================================
+
+-- Get services immediately
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
+local LocalPlayer = Players.LocalPlayer
+
+-- ========================================
+-- STEP 1: DISCONNECT ALL OLD CONNECTIONS
+-- ========================================
+if _G.MurderMysteryESP and _G.MurderMysteryESP.Connections then
+    for _, connection in pairs(_G.MurderMysteryESP.Connections) do
+        pcall(function()
+            connection:Disconnect()
+        end)
+    end
+end
+
+if _G.MurderMysteryESP and _G.MurderMysteryESP.ActiveTweens then
+    for _, tween in pairs(_G.MurderMysteryESP.ActiveTweens) do
+        pcall(function()
+            tween:Cancel()
+        end)
+    end
+end
+
+-- Reset global state
+_G.MurderMysteryESP = nil
+_G.MurderMysteryESP_Highlights = nil
+
+-- ========================================
+-- STEP 2: DESTROY ALL UIs - AGGRESSIVE CLEANUP
+-- ========================================
+task.wait(0.1)
+
+-- Search for ANY UI with "Luminosity" in the name
+for _, gui in pairs(CoreGui:GetChildren()) do
+    if string.find(gui.Name:lower(), "luminosity") or gui.Name == "Hellish" or gui.Name == "LuminosityUI" then
+        gui:Destroy()
+        print("Destroyed old UI:", gui.Name)
+    end
+end
+
+if LocalPlayer:FindFirstChild("PlayerGui") then
+    for _, gui in pairs(LocalPlayer.PlayerGui:GetChildren()) do
+        if string.find(gui.Name:lower(), "luminosity") or gui.Name == "Hellish" or gui.Name == "LuminosityUI" then
+            gui:Destroy()
+            print("Destroyed old UI from PlayerGui:", gui.Name)
+        end
+    end
+end
+
+-- Also check for any ScreenGui that might contain our UI
+for _, gui in pairs(CoreGui:GetChildren()) do
+    if gui:IsA("ScreenGui") then
+        -- Check if it has any child with "Murder" or "ESP" in name
+        for _, child in pairs(gui:GetDescendants()) do
+            if child.Name and (string.find(child.Name:lower(), "murder") or string.find(child.Name:lower(), "esp")) then
+                gui:Destroy()
+                print("Destroyed old UI container:", gui.Name)
+                break
+            end
+        end
+    end
+end
+
+-- ========================================
+-- STEP 3: NUCLEAR HIGHLIGHT DESTRUCTION
+-- ========================================
+task.wait(0.1)
+
+-- Destroy ALL highlights in the entire game
+local highlightsDestroyed = 0
+for _, obj in pairs(workspace:GetDescendants()) do
+    if obj:IsA("Highlight") then
+        obj:Destroy()
+        highlightsDestroyed = highlightsDestroyed + 1
+    end
+end
+
+-- Double check all player characters
+for _, player in pairs(Players:GetPlayers()) do
+    if player.Character then
+        for _, obj in pairs(player.Character:GetDescendants()) do
+            if obj:IsA("Highlight") then
+                obj:Destroy()
+            end
+        end
+    end
+    
+    local workspaceChar = workspace:FindFirstChild(player.Name)
+    if workspaceChar then
+        for _, obj in pairs(workspaceChar:GetDescendants()) do
+            if obj:IsA("Highlight") then
+                obj:Destroy()
+            end
+        end
+    end
+end
+
+print("Cleanup complete: Destroyed " .. highlightsDestroyed .. " highlights")
+
+-- Wait for destruction to complete
+task.wait(0.5)
+
+-- ========================================
+-- COMPREHENSIVE CLEANUP SYSTEM
+-- ========================================
+
+local cleanupSuccess = true
+
+pcall(function()
+    for _, gui in pairs(CoreGui:GetChildren()) do
+        if string.find(tostring(gui.Name):lower(), "luminosity") or gui.Name == "Hellish" or gui.Name == "LuminosityUI" then
+            gui:Destroy()
+        end
+    end
+    
+    if LocalPlayer:FindFirstChild("PlayerGui") then
+        for _, gui in pairs(LocalPlayer.PlayerGui:GetChildren()) do
+            if string.find(tostring(gui.Name):lower(), "luminosity") or gui.Name == "Hellish" or gui.Name == "LuminosityUI" then
+                gui:Destroy()
+            end
+        end
+    end
+    
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("Highlight") and obj.Name == "ESPHighlight" then
+            obj:Destroy()
+        end
+    end
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player.Character then
+            for _, obj in pairs(player.Character:GetDescendants()) do
+                if obj:IsA("Highlight") and (obj.Name == "ESPHighlight" or obj.Name == "Highlight") then
+                    obj:Destroy()
+                end
+            end
+        end
+        
+        local workspaceChar = workspace:FindFirstChild(player.Name)
+        if workspaceChar then
+            for _, obj in pairs(workspaceChar:GetDescendants()) do
+                if obj:IsA("Highlight") and (obj.Name == "ESPHighlight" or obj.Name == "Highlight") then
+                    obj:Destroy()
+                end
+            end
+        end
+    end
+    
+    for i = 1, 3 do
+        task.wait(0.05)
+    end
+end)
+
+if not cleanupSuccess then
+    warn("Some cleanup operations may have failed, but continuing execution...")
+end
+
+task.wait(0.3)
+
+-- ========================================
+-- SCRIPT INITIALIZATION
+-- ========================================
+
+local LuminosityUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jshawk/luminosity-lite/refs/heads/main/Luminosity%20Lite%20UI.lua"))()
+
+if not LuminosityUI then
+    error("Failed to load Luminosity UI - Library returned nil")
+end
+
+-- ========================================
+-- GLOBAL TRACKING FOR CLEANUP
+-- ========================================
+
+if not _G.MurderMysteryESP then
+    _G.MurderMysteryESP = {}
+end
+
+if _G.MurderMysteryESP.Connections then
+    for _, connection in pairs(_G.MurderMysteryESP.Connections) do
+        pcall(function()
+            connection:Disconnect()
+        end)
+    end
+end
+
+if _G.MurderMysteryESP.ActiveTweens then
+    for _, tween in pairs(_G.MurderMysteryESP.ActiveTweens) do
+        pcall(function()
+            tween:Cancel()
+        end)
+    end
+end
+
+_G.MurderMysteryESP = {
+    Connections = {},
+    ActiveTweens = {},
+    Highlights = {},
+    Enabled = false,
+    ESPEnabled = false,
+    Window = nil
+}
+
+local function TrackConnection(connection)
+    table.insert(_G.MurderMysteryESP.Connections, connection)
+    return connection
+end
+
+local function TrackTween(tween)
+    table.insert(_G.MurderMysteryESP.ActiveTweens, tween)
+    return tween
+end
+
+-- ========================================
+-- CONFIGURATION
+-- ========================================
+
+local ESPConfig = {
+    Enabled = false,
+    SheriffColor = Color3.fromRGB(0, 100, 255),
+    MurdererColor = Color3.fromRGB(255, 0, 0),
+    CivilianColor = Color3.fromRGB(0, 255, 0),
+    HighlightTransparency = 0.5,
+    OutlineTransparency = 0
+}
+
+local AutofarmEnabled = false
+local noclipConnection = nil
+
+local function setNoclip(enabled)
+    if enabled then
+        if noclipConnection then
+            noclipConnection:Disconnect()
+        end
+        
+        noclipConnection = TrackConnection(RunService.Stepped:Connect(function()
+            pcall(function()
+                local character = LocalPlayer.Character
+                if character then
+                    for _, part in pairs(character:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                            part.CanCollide = false
+                        end
+                    end
+                end
+            end)
+        end))
+    else
+        if noclipConnection then
+            noclipConnection:Disconnect()
+            noclipConnection = nil
+        end
+        
+        pcall(function()
+            local character = LocalPlayer.Character
+            if character then
+                for _, part in pairs(character:GetDescendants()) do
+                    if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                        part.CanCollide = true
+                    end
+                end
+            end
+        end)
+    end
+end
+
+local PlayerRoles = {}
+local Highlights = {}
+local isCollectingCoin = false
+
+-- ========================================
+-- CREATE UI WINDOW - CORRECT API
+-- ========================================
+
+local window = LuminosityUI:CreateWindow("MM2")
+_G.MurderMysteryESP.Window = window
+
+-- Store the ScreenGui for manual toggle
+local screenGui = nil
+task.spawn(function()
+    task.wait(0.5)
+    -- Find the Luminosity UI ScreenGui
+    for _, gui in pairs(CoreGui:GetChildren()) do
+        if gui:IsA("ScreenGui") and (string.find(gui.Name:lower(), "luminosity") or gui:FindFirstChild("Main")) then
+            screenGui = gui
+            print("Found UI ScreenGui:", gui.Name)
+            break
+        end
+    end
+    
+    if not screenGui and LocalPlayer:FindFirstChild("PlayerGui") then
+        for _, gui in pairs(LocalPlayer.PlayerGui:GetChildren()) do
+            if gui:IsA("ScreenGui") and (string.find(gui.Name:lower(), "luminosity") or gui:FindFirstChild("Main")) then
+                screenGui = gui
+                print("Found UI ScreenGui in PlayerGui:", gui.Name)
+                break
+            end
+        end
+    end
+end)
+
+-- Create Main Tab
+local mainTab = window:AddTab("Main")
+mainTab:AddSection("ESP Features")
+
+-- Single ESP Toggle
+mainTab:AddToggle("Enable ESP", false, function(Value)
+    ESPConfig.Enabled = Value
+    _G.MurderMysteryESP.ESPEnabled = Value
+    
+    -- ALWAYS clean up ALL highlights first, regardless of toggle state
+    for player, highlight in pairs(Highlights) do
+        if highlight and highlight.Parent then
+            highlight:Destroy()
+        end
+    end
+    
+    -- Deep clean - search entire workspace for any ESPHighlight or ANY Highlight
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("Highlight") then
+            obj:Destroy()
+        end
+    end
+    
+    -- Clear tracking tables
+    Highlights = {}
+    PlayerRoles = {}
+    _G.MurderMysteryESP.Highlights = {}
+    
+    if not Value then
+        -- ESP is disabled, stay clean
+    else
+        -- Re-check all players when enabled
+        task.wait(0.1) -- Small delay to ensure cleanup is complete
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer then
+                updatePlayerESP(player)
+            end
+        end
+    end
+end)
+
+mainTab:AddSeparator()
+mainTab:AddSection("Autofarm Features")
+
+-- Autofarm Toggle
+mainTab:AddToggle("Coin Autofarm", false, function(Value)
+    AutofarmEnabled = Value
+    if not Value then
+        setNoclip(false) -- Disable noclip when autofarm is off
+        
+        -- Remove anti-gravity
+        pcall(function()
+            local character = LocalPlayer.Character
+            if character then
+                local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+                if humanoidRootPart then
+                    local bodyVelocity = humanoidRootPart:FindFirstChild("AntiGravity")
+                    if bodyVelocity then
+                        bodyVelocity:Destroy()
+                    end
+                end
+            end
+        end)
+        
+        -- Remove platform when autofarm is disabled
+        pcall(function()
+            for _, obj in pairs(workspace:GetChildren()) do
+                if obj.Name == "AutofarmPlatform" then
+                    obj:Destroy()
+                end
+            end
+        end)
+    else
+        setNoclip(true) -- Enable noclip when autofarm is on
+    end
+end)
+
+-- Create Settings Tab
+local settingsTab = window:AddTab("Settings")
+settingsTab:AddSection("Controls")
+
+-- UI Toggle with Keybind - Using manual input detection
+settingsTab:AddLabel("Press 'K' to toggle UI visibility", 14, "center")
+
+-- Manual keybind detection for UI toggle
+local UserInputService = game:GetService("UserInputService")
+TrackConnection(UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    
+    if input.KeyCode == Enum.KeyCode.K then
+        -- Manually toggle the UI visibility
+        if screenGui then
+            screenGui.Enabled = not screenGui.Enabled
+            print("UI toggled:", screenGui.Enabled)
+        else
+            -- Try to find it again
+            for _, gui in pairs(CoreGui:GetChildren()) do
+                if gui:IsA("ScreenGui") and (string.find(gui.Name:lower(), "luminosity") or gui:FindFirstChild("Main")) then
+                    screenGui = gui
+                    screenGui.Enabled = not screenGui.Enabled
+                    print("UI found and toggled:", screenGui.Enabled)
+                    break
+                end
+            end
+        end
+    end
+end))
+
+-- Function to check if player has or had a tool
+local function checkPlayerForItem(player, itemName)
+    if not player then return false end
+    
+    -- Method 1: Check player.Character (standard Roblox)
+    local character = player.Character
+    if character then
+        local item = character:FindFirstChild(itemName)
+        if item then
+            return true
+        end
+    end
+    
+    -- Method 2: Check workspace for player's model by name
+    local workspaceCharacter = workspace:FindFirstChild(player.Name)
+    if workspaceCharacter then
+        local item = workspaceCharacter:FindFirstChild(itemName)
+        if item then
+            return true
+        end
+    end
+    
+    -- Method 3: Check backpack for item
+    local backpack = player:FindFirstChild("Backpack")
+    if backpack then
+        local item = backpack:FindFirstChild(itemName)
+        if item then
+            return true
+        end
+    end
+    
+    return false
+end
+
+-- Function to determine player role
+local function determinePlayerRole(player)
+    if player == LocalPlayer then
+        return nil -- Don't highlight ourselves
+    end
+    
+    -- Check for Gun (Sheriff)
+    if checkPlayerForItem(player, "Gun") then
+        return "Sheriff"
+    end
+    
+    -- Check for Knife (Murderer)
+    if checkPlayerForItem(player, "Knife") then
+        return "Murderer"
+    end
+    
+    -- If no Gun or Knife, they are a Civilian
+    return "Civilian"
+end
+
+-- Function to create highlight
+local function createHighlight(player, role)
+    if not ESPConfig.Enabled then return end
+    if not player then return end
+    if player == LocalPlayer then return end
+    
+    -- Get character from workspace or player.Character
+    local character = player.Character or workspace:FindFirstChild(player.Name)
+    if not character then return end
+    
+    -- AGGRESSIVE CLEANUP - Remove ALL existing highlights from this character
+    for _, obj in pairs(character:GetDescendants()) do
+        if obj:IsA("Highlight") then
+            obj:Destroy()
+        end
+    end
+    
+    -- Remove from tracking
+    if Highlights[player] and Highlights[player].Parent then
+        Highlights[player]:Destroy()
+    end
+    
+    -- Create new highlight
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "ESPHighlight"
+    highlight.Adornee = character
+    highlight.FillTransparency = ESPConfig.HighlightTransparency
+    highlight.OutlineTransparency = ESPConfig.OutlineTransparency
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    
+    -- Set color based on role
+    if role == "Sheriff" then
+        highlight.FillColor = ESPConfig.SheriffColor
+        highlight.OutlineColor = ESPConfig.SheriffColor
+    elseif role == "Murderer" then
+        highlight.FillColor = ESPConfig.MurdererColor
+        highlight.OutlineColor = ESPConfig.MurdererColor
+    elseif role == "Civilian" then
+        highlight.FillColor = ESPConfig.CivilianColor
+        highlight.OutlineColor = ESPConfig.CivilianColor
+    end
+    
+    highlight.Parent = character
+    Highlights[player] = highlight
+    
+    -- Store in global tracking
+    if _G.MurderMysteryESP then
+        _G.MurderMysteryESP.Highlights[player] = highlight
+    end
+end
+
+-- Function to update ESP for a player
+function updatePlayerESP(player)
+    if not ESPConfig.Enabled then return end
+    if player == LocalPlayer then return end
+    
+    local role = determinePlayerRole(player)
+    
+    if role then
+        -- Always update role (even if same, to ensure highlight is correct)
+        local roleChanged = role ~= PlayerRoles[player]
+        PlayerRoles[player] = role
+        
+        -- Always recreate highlight to ensure it's up to date
+        createHighlight(player, role)
+    end
+end
+
+-- Function to remove ESP from a player
+local function removePlayerESP(player)
+    if Highlights[player] and Highlights[player].Parent then
+        Highlights[player]:Destroy()
+    end
+    Highlights[player] = nil
+    PlayerRoles[player] = nil
+    
+    -- Remove from global tracking
+    if _G.MurderMysteryESP and _G.MurderMysteryESP.Highlights then
+        _G.MurderMysteryESP.Highlights[player] = nil
+    end
+end
+
+-- Monitor all players
+local function setupPlayerMonitoring(player)
+    if player == LocalPlayer then return end
+    
+    -- Monitor character added
+    TrackConnection(player.CharacterAdded:Connect(function(character)
+        -- Wait for character to load
+        task.wait(0.5)
+        updatePlayerESP(player)
+        
+        -- Monitor for tool ADDED in character
+        TrackConnection(character.ChildAdded:Connect(function(child)
+            if child:IsA("Tool") and (child.Name == "Gun" or child.Name == "Knife") then
+                updatePlayerESP(player)
+            end
+        end))
+        
+        -- Monitor for tool REMOVED in character
+        TrackConnection(character.ChildRemoved:Connect(function(child)
+            if child:IsA("Tool") and (child.Name == "Gun" or child.Name == "Knife") then
+                task.wait(0.1) -- Small delay to ensure detection
+                updatePlayerESP(player)
+            end
+        end))
+    end))
+    
+    -- Also monitor workspace directly for the player's model
+    local function monitorWorkspaceCharacter()
+        local workspaceChar = workspace:FindFirstChild(player.Name)
+        if workspaceChar then
+            TrackConnection(workspaceChar.ChildAdded:Connect(function(child)
+                if child:IsA("Tool") and (child.Name == "Gun" or child.Name == "Knife") then
+                    updatePlayerESP(player)
+                end
+            end))
+            
+            TrackConnection(workspaceChar.ChildRemoved:Connect(function(child)
+                if child:IsA("Tool") and (child.Name == "Gun" or child.Name == "Knife") then
+                    task.wait(0.1)
+                    updatePlayerESP(player)
+                end
+            end))
+        end
+    end
+    
+    -- Initial workspace monitoring
+    monitorWorkspaceCharacter()
+    
+    -- Re-monitor workspace when character changes
+    TrackConnection(workspace.ChildAdded:Connect(function(child)
+        if child.Name == player.Name then
+            task.wait(0.5)
+            updatePlayerESP(player)
+            monitorWorkspaceCharacter()
+        end
+    end))
+    
+    -- Monitor backpack changes
+    local backpack = player:WaitForChild("Backpack", 5)
+    if backpack then
+        TrackConnection(backpack.ChildAdded:Connect(function(child)
+            if child:IsA("Tool") and (child.Name == "Gun" or child.Name == "Knife") then
+                updatePlayerESP(player)
+            end
+        end))
+        
+        TrackConnection(backpack.ChildRemoved:Connect(function(child)
+            if child:IsA("Tool") and (child.Name == "Gun" or child.Name == "Knife") then
+                task.wait(0.1)
+                updatePlayerESP(player)
+            end
+        end))
+    end
+    
+    -- Initial check
+    if player.Character or workspace:FindFirstChild(player.Name) then
+        updatePlayerESP(player)
+    end
+end
+
+-- Setup for all current players
+for _, player in pairs(Players:GetPlayers()) do
+    setupPlayerMonitoring(player)
+end
+
+-- Setup for new players
+TrackConnection(Players.PlayerAdded:Connect(function(player)
+    setupPlayerMonitoring(player)
+end))
+
+-- Cleanup when player leaves
+TrackConnection(Players.PlayerRemoving:Connect(function(player)
+    removePlayerESP(player)
+end))
+
+-- Continuous update loop
+TrackConnection(RunService.Heartbeat:Connect(function()
+    if not ESPConfig.Enabled then return end
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local character = player.Character or workspace:FindFirstChild(player.Name)
+            
+            if character then
+                -- Check if highlight needs to be recreated (character respawned, etc.)
+                if PlayerRoles[player] and (not Highlights[player] or not Highlights[player].Parent) then
+                    createHighlight(player, PlayerRoles[player])
+                end
+                
+                -- Continuously check for role updates
+                updatePlayerESP(player)
+            end
+        end
+    end
+end))
+
+-- Anti-AFK System - Emit VirtualInput click every 5 minutes
+task.spawn(function()
+    local VirtualInputManager = game:GetService("VirtualInputManager")
+    
+    while task.wait(300) do -- 300 seconds = 5 minutes
+        pcall(function()
+            -- Emit a mouse click at the center of the screen
+            local screenSize = workspace.CurrentCamera.ViewportSize
+            local centerX = screenSize.X / 2
+            local centerY = screenSize.Y / 2
+            
+            -- Send mouse button down and up to simulate a click
+            VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, true, game, 0)
+            task.wait(0.1)
+            VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, false, game, 0)
+        end)
+    end
+end)
+
+-- Coin Autofarm System - ULTRA PRECISE coin collection with dynamic checking
+task.spawn(function()
+    local visitedCoins = {}
+    local checkInterval = 3
+    local mainGUIReference = nil
+    local platformPart = nil
+    
+    -- Function to create invisible platform
+    local function createPlatform()
+        if platformPart and platformPart.Parent then
+            platformPart:Destroy()
+        end
+        
+        platformPart = Instance.new("Part")
+        platformPart.Name = "AutofarmPlatform"
+        platformPart.Size = Vector3.new(10, 1, 10)
+        platformPart.Anchored = true
+        platformPart.CanCollide = true
+        platformPart.Transparency = 1
+        platformPart.Material = Enum.Material.SmoothPlastic
+        platformPart.Parent = workspace
+        
+        return platformPart
+    end
+    
+    -- Function to update platform position
+    local function updatePlatform(position)
+        if not platformPart or not platformPart.Parent then
+            platformPart = createPlatform()
+        end
+        
+        local offset = Vector3.new(0, -3.5, 0)
+        platformPart.CFrame = CFrame.new(position + offset)
+    end
+    
+    -- Function to remove platform
+    local function removePlatform()
+        if platformPart and platformPart.Parent then
+            platformPart:Destroy()
+            platformPart = nil
+        end
+    end
+    
+    -- Function to get MainGUI reference
+    local function getMainGUI()
+        local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+        if playerGui then
+            return playerGui:FindFirstChild("MainGUI")
+        end
+        return nil
+    end
+    
+    mainGUIReference = getMainGUI()
+    
+    -- Monitor map changes
+    task.spawn(function()
+        local coinContainerExists = false
+        for _, obj in pairs(workspace:GetChildren()) do
+            if obj:FindFirstChild("CoinContainer") then
+                coinContainerExists = true
+                break
+            end
+        end
+        
+        while true do
+            task.wait(0.5)
+            if AutofarmEnabled then
+                local foundCoinContainer = false
+                for _, obj in pairs(workspace:GetChildren()) do
+                    local container = obj:FindFirstChild("CoinContainer")
+                    if container then
+                        foundCoinContainer = true
+                        break
+                    end
+                end
+                
+                if coinContainerExists and not foundCoinContainer then
+                    visitedCoins = {}
+                    checkInterval = 3
+                    coinContainerExists = false
+                    print("Map removed - waiting for new map...")
+                end
+                
+                if not coinContainerExists and foundCoinContainer then
+                    visitedCoins = {}
+                    checkInterval = 0.03
+                    mainGUIReference = getMainGUI()
+                    coinContainerExists = true
+                    print("New map detected - resuming autofarm!")
+                end
+                
+                coinContainerExists = foundCoinContainer
+            end
+        end
+    end)
+    
+    while true do
+        task.wait(checkInterval)
+        
+        if AutofarmEnabled then
+            pcall(function()
+                if not mainGUIReference or not mainGUIReference.Parent then
+                    mainGUIReference = getMainGUI()
+                end
+                
+                -- Check if coin bag is full
+                if mainGUIReference then
+                    local game = mainGUIReference:FindFirstChild("Game")
+                    if game then
+                        local coinBags = game:FindFirstChild("CoinBags")
+                        if coinBags then
+                            local container = coinBags:FindFirstChild("Container")
+                            if container then
+                                local snowToken = container:FindFirstChild("SnowToken")
+                                if snowToken then
+                                    local full = snowToken:FindFirstChild("Full")
+                                    
+                                    if full and full.Visible then
+                                        local character = LocalPlayer.Character
+                                        if character then
+                                            local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+                                            if humanoidRootPart then
+                                                local bodyVelocity = humanoidRootPart:FindFirstChild("AntiGravity")
+                                                if not bodyVelocity then
+                                                    bodyVelocity = Instance.new("BodyVelocity")
+                                                    bodyVelocity.Name = "AntiGravity"
+                                                    bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                                                    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+                                                    bodyVelocity.Parent = humanoidRootPart
+                                                end
+                                                
+                                                while full and full.Visible and AutofarmEnabled do
+                                                    local currentPos = humanoidRootPart.Position
+                                                    local targetPos = Vector3.new(currentPos.X, 200, currentPos.Z)
+                                                    
+                                                    humanoidRootPart.CFrame = CFrame.new(targetPos)
+                                                    humanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+                                                    humanoidRootPart.RotVelocity = Vector3.new(0, 0, 0)
+                                                    humanoidRootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                                                    humanoidRootPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                                                    
+                                                    updatePlatform(humanoidRootPart.Position)
+                                                    
+                                                    task.wait()
+                                                end
+                                                
+                                                if bodyVelocity then
+                                                    bodyVelocity:Destroy()
+                                                end
+                                                
+                                                checkInterval = 3
+                                                visitedCoins = {}
+                                                return
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+                
+                local character = LocalPlayer.Character
+                if not character then return end
+                
+                local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+                if not humanoidRootPart then return end
+                
+                local coinContainerExists = false
+                for _, obj in pairs(workspace:GetChildren()) do
+                    if obj:FindFirstChild("CoinContainer") then
+                        coinContainerExists = true
+                        break
+                    end
+                end
+                
+                if not coinContainerExists then
+                    if humanoidRootPart then
+                        updatePlatform(humanoidRootPart.Position)
+                    end
+                    checkInterval = 3
+                    return
+                end
+                
+                local coinContainers = {}
+                for _, obj in pairs(workspace:GetDescendants()) do
+                    if obj.Name == "CoinContainer" and (obj:IsA("Model") or obj:IsA("Folder")) then
+                        table.insert(coinContainers, obj)
+                    end
+                end
+                
+                local closestCoin = nil
+                local closestDistance = math.huge
+                
+                for _, container in pairs(coinContainers) do
+                    for _, coin in pairs(container:GetChildren()) do
+                        if coin.Name == "Coin_Server" and coin:IsA("BasePart") and not visitedCoins[coin] then
+                            local distance = (coin.Position - humanoidRootPart.Position).Magnitude
+                            
+                            if distance < closestDistance and distance <= 500 then
+                                closestDistance = distance
+                                closestCoin = coin
+                            end
+                        end
+                    end
+                end
+                
+                for coin, _ in pairs(visitedCoins) do
+                    if not coin.Parent then
+                        visitedCoins[coin] = nil
+                    end
+                end
+                
+                if not closestCoin then
+                    visitedCoins = {}
+                    checkInterval = 3
+                    return
+                end
+                
+                checkInterval = 0.03
+                visitedCoins[closestCoin] = true
+                
+                local targetPosition = closestCoin.Position
+                local speed = 35
+                local startPosition = humanoidRootPart.Position
+                local distance = (targetPosition - startPosition).Magnitude
+                local duration = distance / speed
+                
+                local startTime = tick()
+                
+                local bodyVelocity = humanoidRootPart:FindFirstChild("AntiGravity")
+                if not bodyVelocity then
+                    bodyVelocity = Instance.new("BodyVelocity")
+                    bodyVelocity.Name = "AntiGravity"
+                    bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+                    bodyVelocity.Parent = humanoidRootPart
+                end
+                
+                while AutofarmEnabled and closestCoin.Parent do
+                    if not AutofarmEnabled then
+                        if bodyVelocity then bodyVelocity:Destroy() end
+                        return
+                    end
+                    
+                    if not closestCoin.Parent then
+                        break
+                    end
+                    
+                    local coinParent = closestCoin.Parent
+                    if coinParent then
+                        local coinVisual = coinParent:FindFirstChild("CoinVisual")
+                        if coinVisual and coinVisual:IsA("BasePart") and coinVisual.Transparency == 1 then
+                            if bodyVelocity then bodyVelocity:Destroy() end
+                            break
+                        end
+                    end
+                    
+                    local elapsed = tick() - startTime
+                    local currentDistance = (humanoidRootPart.Position - targetPosition).Magnitude
+                    
+                    if currentDistance < 0.5 or elapsed > duration + 1 then
+                        for i = 1, 15 do
+                            if not closestCoin.Parent then break end
+                            
+                            if coinParent then
+                                local coinVisual = coinParent:FindFirstChild("CoinVisual")
+                                if coinVisual and coinVisual:IsA("BasePart") and coinVisual.Transparency == 1 then
+                                    break
+                                end
+                            end
+                            
+                            humanoidRootPart.CFrame = CFrame.new(targetPosition)
+                            humanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+                            humanoidRootPart.RotVelocity = Vector3.new(0, 0, 0)
+                            humanoidRootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                            humanoidRootPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                            
+                            updatePlatform(humanoidRootPart.Position)
+                            
+                            task.wait()
+                        end
+                        break
+                    end
+                    
+                    local alpha = math.min(elapsed / duration, 1)
+                    local currentPosition = startPosition:Lerp(targetPosition, alpha)
+                    
+                    humanoidRootPart.CFrame = CFrame.new(currentPosition)
+                    humanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+                    humanoidRootPart.RotVelocity = Vector3.new(0, 0, 0)
+                    humanoidRootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                    humanoidRootPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                    
+                    updatePlatform(humanoidRootPart.Position)
+                    
+                    task.wait()
+                end
+                
+                if bodyVelocity and bodyVelocity.Parent then
+                    bodyVelocity:Destroy()
+                end
+                
+                local coinParent = closestCoin.Parent
+                if coinParent then
+                    local coinVisual = coinParent:FindFirstChild("CoinVisual")
+                    
+                    if coinVisual and coinVisual:IsA("BasePart") and coinVisual.Transparency == 1 then
+                        task.wait(0.3)
+                        return
+                    end
+                    
+                    if coinVisual and coinVisual:IsA("BasePart") and coinVisual.Transparency ~= 1 then
+                        task.wait(3)
+                    end
+                end
+                
+                task.wait(0.3)
+            end)
+        end
+    end
+end)
