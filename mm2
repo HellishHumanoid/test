@@ -1,18 +1,149 @@
--- Murder Mystery ESP Script - FINAL WORKING VERSION
--- Detects Sheriff (Gun - Blue) and Murderer (Knife - Red)
--- Uses Luminosity UI Library
--- Added Coin Autofarm with FIXED coin collection
+-- ========================================
+-- AUTO-REJOIN & AUTO-EXECUTE SYSTEM (XENO FIXED)
+-- ========================================
+
+local TeleportService = game:GetService("TeleportService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+-- Store script URL for re-execution
+if not _G.MM2ScriptURL then
+    _G.MM2ScriptURL = "https://raw.githubusercontent.com/HellishHumanoid/test/refs/heads/main/mm2"
+end
+
+print("Queue Function: queueonteleport (Xeno)")
+
+-- Function to rejoin the game
+local function rejoinGame()
+    print("Kick detected! Queuing script and rejoining...")
+    
+    -- Queue the script with proper waiting and error handling
+    local queueCode = [[
+-- CRITICAL: Wait for game to be fully loaded
+print("[AUTO-EXEC] Waiting for game to load...")
+repeat task.wait(0.5) until game:IsLoaded()
+print("[AUTO-EXEC] Game loaded, waiting for character...")
+
+-- Wait for LocalPlayer
+local Players = game:GetService("Players")
+repeat task.wait(0.5) until Players.LocalPlayer
+
+-- Wait for character to exist
+local LocalPlayer = Players.LocalPlayer
+repeat task.wait(0.5) until LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+
+-- Additional wait for stability
+task.wait(3)
+
+print("[AUTO-EXEC] Loading MM2 Script...")
+
+-- Load the script with error handling
+local success, err = pcall(function()
+    local scriptCode = game:HttpGet("]] .. _G.MM2ScriptURL .. [[", true)
+    if scriptCode then
+        loadstring(scriptCode)()
+        print("[AUTO-EXEC] ✓ Script loaded successfully!")
+    else
+        warn("[AUTO-EXEC] Failed to fetch script")
+    end
+end)
+
+if not success then
+    warn("[AUTO-EXEC] ✗ Error: " .. tostring(err))
+end
+]]
+    
+    local success, err = pcall(function()
+        queueonteleport(queueCode)
+    end)
+    
+    if success then
+        print("✓ Script queued for auto-execute!")
+    else
+        warn("✗ Failed to queue script: " .. tostring(err))
+    end
+    
+    -- Now teleport
+    task.wait(0.5)
+    pcall(function()
+        TeleportService:Teleport(game.PlaceId, LocalPlayer)
+    end)
+end
+
+-- Detect KICK-RELATED UI elements
+game:GetService("CoreGui").DescendantAdded:Connect(function(descendant)
+    if descendant.Name == "ErrorPrompt" or descendant.Name == "RobloxPromptGui" then
+        task.spawn(function()
+            task.wait(0.2)
+            if descendant:FindFirstChild("MessageArea") or descendant:FindFirstChild("ErrorTitle") then
+                local foundKickText = false
+                for _, child in pairs(descendant:GetDescendants()) do
+                    if child:IsA("TextLabel") or child:IsA("TextButton") then
+                        local text = child.Text:lower()
+                        if text:find("kick") or text:find("disconnect") or text:find("banned") then
+                            foundKickText = true
+                            break
+                        end
+                    end
+                end
+                
+                if foundKickText then
+                    rejoinGame()
+                end
+            end
+        end)
+    end
+end)
+
+-- Detect kick through GuiService
+local lastErrorMessage = ""
+game:GetService("GuiService").ErrorMessageChanged:Connect(function()
+    local currentError = game:GetService("GuiService"):GetErrorMessage()
+    if currentError ~= lastErrorMessage and currentError ~= "" then
+        lastErrorMessage = currentError
+        print("Error detected: " .. currentError)
+        task.wait(0.5)
+        rejoinGame()
+    end
+end)
+
+-- Backup: OnTeleport hook
+LocalPlayer.OnTeleport:Connect(function(State)
+    if State == Enum.TeleportState.Started then
+        print("OnTeleport triggered - queuing script as backup...")
+        
+        local queueCode = [[
+print("[AUTO-EXEC BACKUP] Waiting for game...")
+repeat task.wait(0.5) until game:IsLoaded()
+local Players = game:GetService("Players")
+repeat task.wait(0.5) until Players.LocalPlayer
+local LocalPlayer = Players.LocalPlayer
+repeat task.wait(0.5) until LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+task.wait(3)
+print("[AUTO-EXEC BACKUP] Loading script...")
+pcall(function()
+    loadstring(game:HttpGet("]] .. _G.MM2ScriptURL .. [[", true))()
+end)
+]]
+        
+        pcall(function()
+            queueonteleport(queueCode)
+        end)
+    end
+end)
+
+print("===============================================")
+print("✓ Auto-Rejoin: ENABLED")
+print("✓ Auto-Execute: ENABLED (queueonteleport)")
+print("===============================================")
 
 -- ========================================
 -- NUCLEAR CLEANUP SYSTEM - RUNS FIRST
 -- ========================================
 
--- Get services immediately
-local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local CoreGui = game:GetService("CoreGui")
-local LocalPlayer = Players.LocalPlayer
 
 -- ========================================
 -- STEP 1: DISCONNECT ALL OLD CONNECTIONS
@@ -391,8 +522,12 @@ end)
 local settingsTab = window:AddTab("Settings")
 settingsTab:AddSection("Controls")
 
--- UI Toggle with Keybind - Using manual input detection
+-- UI Toggle with Keybind
 settingsTab:AddLabel("Press 'K' to toggle UI visibility", 14, "center")
+settingsTab:AddSeparator()
+settingsTab:AddSection("Auto-Rejoin Status")
+settingsTab:AddLabel("✓ Auto-Rejoin: ENABLED", 14, "center")
+settingsTab:AddLabel("✓ Auto-Execute: ENABLED", 14, "center")
 
 -- Manual keybind detection for UI toggle
 local UserInputService = game:GetService("UserInputService")
@@ -695,6 +830,7 @@ task.spawn(function()
     local checkInterval = 3
     local mainGUIReference = nil
     local platformPart = nil
+    local currentMapName = nil
     
     -- Function to create invisible platform
     local function createPlatform()
@@ -741,9 +877,20 @@ task.spawn(function()
         return nil
     end
     
-    mainGUIReference = getMainGUI()
+    -- Function to get current map name
+    local function getCurrentMapName()
+        for _, obj in pairs(workspace:GetChildren()) do
+            if obj:FindFirstChild("CoinContainer") and obj.Name ~= "Camera" then
+                return obj.Name
+            end
+        end
+        return nil
+    end
     
-    -- Monitor map changes
+    mainGUIReference = getMainGUI()
+    currentMapName = getCurrentMapName()
+    
+    -- Monitor map changes with enhanced detection
     task.spawn(function()
         local coinContainerExists = false
         for _, obj in pairs(workspace:GetChildren()) do
@@ -753,10 +900,52 @@ task.spawn(function()
             end
         end
         
+        -- Also monitor workspace for child removal (map gets deleted)
+        TrackConnection(workspace.ChildRemoved:Connect(function(child)
+            if AutofarmEnabled and child.Name == currentMapName then
+                visitedCoins = {}
+                checkInterval = 3
+                currentMapName = nil
+                print("Map removed (ChildRemoved) - waiting for new map...")
+                
+                -- Clean up any anti-gravity
+                pcall(function()
+                    local character = LocalPlayer.Character
+                    if character then
+                        local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+                        if humanoidRootPart then
+                            local bodyVelocity = humanoidRootPart:FindFirstChild("AntiGravity")
+                            if bodyVelocity then
+                                bodyVelocity:Destroy()
+                            end
+                        end
+                    end
+                end)
+            end
+        end))
+        
+        -- Monitor workspace for child addition (new map loaded)
+        TrackConnection(workspace.ChildAdded:Connect(function(child)
+            task.wait(0.5) -- Wait for map to fully load
+            if AutofarmEnabled then
+                local hasCoinContainer = child:FindFirstChild("CoinContainer")
+                if hasCoinContainer then
+                    visitedCoins = {}
+                    checkInterval = 0.03
+                    mainGUIReference = getMainGUI()
+                    currentMapName = child.Name
+                    print("New map detected (ChildAdded): " .. currentMapName .. " - resuming autofarm!")
+                end
+            end
+        end))
+        
+        -- Backup polling system
         while true do
             task.wait(0.5)
             if AutofarmEnabled then
                 local foundCoinContainer = false
+                local newMapName = getCurrentMapName()
+                
                 for _, obj in pairs(workspace:GetChildren()) do
                     local container = obj:FindFirstChild("CoinContainer")
                     if container then
@@ -765,19 +954,44 @@ task.spawn(function()
                     end
                 end
                 
+                -- Detect map removal
                 if coinContainerExists and not foundCoinContainer then
                     visitedCoins = {}
                     checkInterval = 3
                     coinContainerExists = false
-                    print("Map removed - waiting for new map...")
+                    currentMapName = nil
+                    print("Map removed (polling) - waiting for new map...")
+                    
+                    -- Clean up any anti-gravity
+                    pcall(function()
+                        local character = LocalPlayer.Character
+                        if character then
+                            local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+                            if humanoidRootPart then
+                                local bodyVelocity = humanoidRootPart:FindFirstChild("AntiGravity")
+                                if bodyVelocity then
+                                    bodyVelocity:Destroy()
+                                end
+                            end
+                        end
+                    end)
                 end
                 
+                -- Detect new map or map change
                 if not coinContainerExists and foundCoinContainer then
                     visitedCoins = {}
                     checkInterval = 0.03
                     mainGUIReference = getMainGUI()
+                    currentMapName = newMapName
                     coinContainerExists = true
-                    print("New map detected - resuming autofarm!")
+                    print("New map detected (polling): " .. tostring(newMapName) .. " - resuming autofarm!")
+                elseif coinContainerExists and newMapName and newMapName ~= currentMapName then
+                    -- Map changed (different map name detected)
+                    visitedCoins = {}
+                    checkInterval = 0.03
+                    mainGUIReference = getMainGUI()
+                    currentMapName = newMapName
+                    print("Map changed from " .. tostring(currentMapName) .. " to " .. tostring(newMapName) .. " - restarting autofarm!")
                 end
                 
                 coinContainerExists = foundCoinContainer
@@ -1011,3 +1225,6 @@ task.spawn(function()
         end
     end
 end)
+
+print("MM2 Script Loaded Successfully!")
+print("Auto-Rejoin & Auto-Execute: ACTIVE")
