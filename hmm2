@@ -1,6 +1,3 @@
--- Murder Mystery 2 Script
--- Auto-Rejoin & ESP System
-
 local TeleportService = game:GetService("TeleportService")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
@@ -366,6 +363,12 @@ local autofarmToggle = AutofarmSection:CreateToggle({
                         if bodyVelocity then
                             bodyVelocity:Destroy()
                         end
+                        
+                        -- Reset all velocities
+                        humanoidRootPart.Velocity = Vector3.new(0, 0, 0)
+                        humanoidRootPart.RotVelocity = Vector3.new(0, 0, 0)
+                        humanoidRootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                        humanoidRootPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
                     end
                 end
             end)
@@ -741,6 +744,12 @@ task.spawn(function()
     while true do
         task.wait(checkInterval)
         
+        -- Exit immediately if autofarm is disabled
+        if not AutofarmEnabled then
+            task.wait(1)
+            continue
+        end
+        
         if AutofarmEnabled then
             pcall(function()
                 if not mainGUIReference or not mainGUIReference.Parent then
@@ -1009,6 +1018,7 @@ task.spawn(function()
                     
                     if currentDistance < 3 or elapsed > duration + 1 then
                         for i = 1, 15 do
+                            if not AutofarmEnabled then break end
                             if not closestCoin.Parent then break end
                             
                             if coinParent then
